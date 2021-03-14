@@ -7,14 +7,15 @@ I use .NET 5
 ## <u> Installation </u>
 
 ### <u> SQL SERVER </u>
-You to create a SQL Server Database and register is connection string in Api\appsettings.json and replace the value of DefaultConnection by your connection string. This is the way to do it if u need help : <br>
+You need to create a SQL Server Database and register is connection string in Api\appsettings.json and replace the value of DefaultConnection by your connection string. This is the way to do it if u need help : <br>
 https://www.c-sharpcorner.com/UploadFile/d40a40/get-sql-server-database-connection-string-easily-from-visual/#:~:text=Right%2Dclick%20on%20your%20connection,use%20it%20anywhere%20you%20want.
 
+You need to set "Api" as default project to launch in visual studio
 Open the Package Manager Console and write Update-Database
 
 ### <u> SendGRID </u>
 #### <u> Development Environment </u>
-This api need SendGrid for send email, if u wan't to change the way to send email the method is in Api\Services\MessageServices : SendEmailAsync
+This api need SendGrid for send email, if u wan't to change the way to send email the method is in ServiceFolder\Services\MessageServices : SendEmailAsync
 
 If you wan't to use SendGRID follow this step use the services. 
 Go to this link and create an free account https://sendgrid.com. <br>
@@ -29,7 +30,7 @@ Then replace the value of **SENDGRID_EMAIL** in Api\Properties\launchSettings.js
 After this click on Setting > Api Key > Create an API Key <br>
 You must fill in the following information : <br>
 API Key Name : The name for your key <br>
-In permission select Restricted and allow only SEND and create the key. 
+In permission select Restricted and allow only Mail Send and create the key. 
 COPY THE KEY and replace the value of **SENDGRID_APIKEY** in Api\Properties\launchSettings.json <br>
 
 #### <u> Production Environment </u>
