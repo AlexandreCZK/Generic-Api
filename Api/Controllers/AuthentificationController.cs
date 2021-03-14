@@ -62,18 +62,7 @@ namespace Api.Controllers
                         }));
                 }
 
-                if (!user.EmailConfirmed)
-                {
-                    return Forbid(
-                        authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
-                        properties: new AuthenticationProperties(new Dictionary<string, string>
-                        {
-                            [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.AccessDenied,
-                            [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "You have not confirmed your email."
-                        }));
-                }
-
-                // Validate the username/password parameters and ensure the account is not locked out.
+                // Validate the username/password parameters and ensure the account is not locked out and is allowed to sign in.
                 var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
                 if (!result.Succeeded)
                 {
@@ -87,6 +76,16 @@ namespace Api.Controllers
                             [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "The account is locked out."
                         }));
                     }
+                    if (result.IsNotAllowed)
+                    {
+                        return Forbid(
+                        authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                        properties: new AuthenticationProperties(new Dictionary<string, string>
+                        {
+                            [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.AccessDenied,
+                            [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "The account is not allowed."
+                        }));
+                    }
                     return Forbid(
                         authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
                         properties: new AuthenticationProperties(new Dictionary<string, string>
@@ -96,39 +95,54 @@ namespace Api.Controllers
                         }));
                 }
 
-                var principal = await _signInManager.CreateUserPrincipalAsync(user);
+                claimsPrincipal = await _signInManager.CreateUserPrincipalAsync(user);
 
                 // Note: in this sample, the granted scopes match the requested scope
                 // but you may want to allow the user to uncheck specific scopes.
                 // For that, simply restrict the list of scopes before calling SetScopes.
-                principal.SetScopes(request.GetScopes());
-                principal.SetResources(await _scopeManager.ListResourcesAsync(principal.GetScopes()).ToListAsync());
+                claimsPrincipal.SetScopes(request.GetScopes());
+                claimsPrincipal.SetResources(await _scopeManager.ListResourcesAsync(claimsPrincipal.GetScopes()).ToListAsync());
+            }
+            else if (request.IsAuthorizationCodeGrantType() || request.IsRefreshTokenGrantType())
+            {
+                claimsPrincipal = (await HttpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme)).Principal;
 
-                foreach (var claim in principal.Claims)
+                // Retrieve the user profile corresponding to the authorization code/refresh token.
+                // Note: if you want to automatically invalidate the authorization code/refresh token
+                // when the user password/roles change, use the following line instead:
+                //var user = _signInManager.ValidateSecurityStampAsync(info.Principal);
+                var user = await _userManager.GetUserAsync(claimsPrincipal);
+                if (user is null)
                 {
-                    claim.SetDestinations(GetDestinations(claim, principal));
+                    return Forbid(
+                        authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                        properties: new AuthenticationProperties(new Dictionary<string, string>
+                        {
+                            [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.InvalidGrant,
+                            [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "The token is no longer valid."
+                        }));
                 }
 
-                // Returning a SignInResult will ask OpenIddict to issue the appropriate access/identity tokens.
-                return SignIn(principal, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-            }
-            else if (request.IsAuthorizationCodeGrantType())
-            {
-                // Retrieve the claims principal stored in the authorization code
-                claimsPrincipal =
-                    (await HttpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme))
-                    .Principal;
-            }
-            else if (request.IsRefreshTokenGrantType())
-            {
-                // Retrieve the claims principal stored in the refresh token.
-                claimsPrincipal =
-                    (await HttpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme))
-                    .Principal;
+                // Ensure the user is still allowed to sign in.
+                if (!await _signInManager.CanSignInAsync(user))
+                {
+                    return Forbid(
+                        authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                        properties: new AuthenticationProperties(new Dictionary<string, string>
+                        {
+                            [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.InvalidGrant,
+                            [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "The user is no longer allowed to sign in."
+                        }));
+                }
             }
             else
             {
                 throw new InvalidOperationException("The specified grant type is not supported by the application.");
+            }
+
+            foreach (var claim in claimsPrincipal.Claims)
+            {
+                claim.SetDestinations(GetDestinations(claim, claimsPrincipal));
             }
 
             // Returning a SignInResult will ask OpenIddict to issue the appropriate access/identity tokens.

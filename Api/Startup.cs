@@ -45,12 +45,16 @@ namespace Api
                 options.GroupNameFormat = "'v'VVV";
             });
 
-            // Dependencies injection
             services.AddDbContext<ApplicationDbContext>(options =>
             {
+                // Configure the context to use Microsoft SQL Server.
                 options.UseSqlServer(
                     Configuration.GetConnectionString("DefaultConnection"),
                      b => b.MigrationsAssembly("Api"))
+
+                // Register the entity sets needed by OpenIddict.
+                // Note: use the generic overload if you need
+                // to replace the default OpenIddict entities.
                 .UseOpenIddict();
             });
 
@@ -70,34 +74,59 @@ namespace Api
                 options.ClaimsIdentity.RoleClaimType = Claims.Role;
 
                 options.User.RequireUniqueEmail = true;
+                options.SignIn.RequireConfirmedEmail = true;
             });
 
             services.AddOpenIddict()
                 .AddCore(options => { options.UseEntityFrameworkCore().UseDbContext<ApplicationDbContext>(); })
                 .AddServer(options =>
                 {
-                    //set endpoint of OpenIddict
-                    options
-                    .SetTokenEndpointUris("/connect/token")
-                    .SetAuthorizationEndpointUris("/connect/authorize")
-                    .SetUserinfoEndpointUris("/connect/userinfo");
+                    // Enable the authorization, token
+                    options.SetAuthorizationEndpointUris("/connect/authorize")
+                           .SetTokenEndpointUris("/connect/token");
 
-                    options
-                    .AllowPasswordFlow()
-                    .AllowAuthorizationCodeFlow()
-                    .RequireProofKeyForCodeExchange();
+                    // Note: this sample uses the code, device code, password and refresh token flows, but you
+                    // can enable the other flows if you need to support or client credentials.
+                    options.AllowAuthorizationCodeFlow()
+                           .AllowPasswordFlow()
+                           .AllowRefreshTokenFlow()
+                           .SetRefreshTokenLifetime(TimeSpan.FromDays(1));
 
-                    options
-                    .AddEphemeralEncryptionKey()
-                    .AddEphemeralSigningKey();
+                    // Mark the "email", "profile", "roles" and "api" scopes as supported scopes.
+                    options.RegisterScopes(Scopes.Email, Scopes.Profile, Scopes.Roles, "api");
 
+
+                    // Force client applications to use Proof Key for Code Exchange (PKCE).
+                    options.RequireProofKeyForCodeExchange();
+
+                    // Register the ASP.NET Core host and configure the ASP.NET Core-specific options.
                     options
                     .UseAspNetCore()
                     .EnableTokenEndpointPassthrough()
                     .EnableAuthorizationEndpointPassthrough();
 
-                    options.RegisterScopes("api");
+                    // Note: if you don't want to specify a client_id when sending
+                    // a token or revocation request, uncomment the following line:
+                    //
+                    // options.AcceptAnonymousClients();
 
+                    // Note: if you want to process authorization and token requests
+                    // that specify non-registered scopes, uncomment the following line:
+                    //
+                    // options.DisableScopeValidation();
+
+                    // Note: if you don't want to use permissions, you can disable
+                    // permission enforcement by uncommenting the following lines:
+                    //
+                    // options.IgnoreEndpointPermissions()
+                    //        .IgnoreGrantTypePermissions()
+                    //        .IgnoreResponseTypePermissions()
+                    //        .IgnoreScopePermissions();
+
+                    // Note: when issuing access tokens used by third-party APIs
+                    // you don't own, you can disable access token encryption:
+                    //
+                    // options.DisableAccessTokenEncryption();
                 })
                 .AddValidation(options =>
                 {
@@ -106,6 +135,14 @@ namespace Api
 
                     // Register the ASP.NET Core host.
                     options.UseAspNetCore();
+
+                    // For applications that need immediate access token or authorization
+                    // revocation, the database entry of the received tokens and their
+                    // associated authorizations can be validated for each API call.
+                    // Enabling these options may have a negative impact on performance.
+                    //
+                    // options.EnableAuthorizationEntryValidation();
+                    // options.EnableTokenEntryValidation();
                 });
 
             services.AddHostedService<AuthenticationWorker>();
